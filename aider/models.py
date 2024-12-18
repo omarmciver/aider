@@ -3,6 +3,7 @@ import json
 import math
 import os
 import platform
+import requests
 import sys
 import time
 from dataclasses import dataclass, fields
@@ -840,8 +841,6 @@ class ModelInfoManager:
 
     def _update_cache(self):
         try:
-            import requests
-
             response = requests.get(self.MODEL_INFO_URL, timeout=5)
             if response.status_code == 200:
                 self.content = response.json()
@@ -897,7 +896,9 @@ model_info_manager = ModelInfoManager()
 
 
 class Model(ModelSettings):
-    def __init__(self, model, weak_model=None, editor_model=None, editor_edit_format=None):
+    def __init__(
+        self, model, weak_model=None, editor_model=None, editor_edit_format=None
+    ):
         # Map any alias to its canonical name
         model = MODEL_ALIASES.get(model, model)
 
@@ -969,7 +970,9 @@ class Model(ModelSettings):
 
             # Deep merge the extra_params dicts
             for key, value in self.extra_model_settings.extra_params.items():
-                if isinstance(value, dict) and isinstance(self.extra_params.get(key), dict):
+                if isinstance(value, dict) and isinstance(
+                    self.extra_params.get(key), dict
+                ):
                     # For nested dicts, merge recursively
                     self.extra_params[key] = {**self.extra_params[key], **value}
                 else:
@@ -1016,13 +1019,89 @@ class Model(ModelSettings):
             "qwen" in model
             and "coder" in model
             and ("2.5" in model or "2-5" in model)
-            and "32b" in model
+            # and "32b" in model
         ):
             self.edit_format = "diff"
             self.editor_edit_format = "editor-diff"
             self.use_repo_map = True
             if model.startswith("ollama/") or model.startswith("ollama_chat/"):
+                try:
+                    response = requests.post(
+                        f"{os.getenv('OLLAMA_API_BASE', 'http://localhost:11434')}/api/show",
+                        json={"model": model.replace("ollama/", "")},
+                        timeout=5,
+                    )
+                    if response.status_code == 200:
+                        model_info = response.json()
+                        context_length = model_info.get("model_info", {}).get(
+                            "llama.context_length", 8192
+                        )
+                        self.extra_params = dict(num_ctx=context_length)
+                    else:
+                        self.extra_params = dict(num_ctx=8 * 1024)
+
+                except requests.RequestException as e:
+                    print(f"Error fetching model info: {e}")
+                    self.extra_params = dict(num_ctx=8 * 1024)
+            return  # <--
+
+        if "mistral-nemo" in model and (
+            model.startswith("ollama/") or model.startswith("ollama_chat/")
+        ):
+            self.edit_format = "diff"
+            self.editor_edit_format = "editor-diff"
+            self.use_repo_map = True
+            try:
+                response = requests.post(
+                    f"{os.getenv('OLLAMA_API_BASE', 'http://localhost:11434')}/api/show",
+                    json={"model": model.replace("ollama/", "")},
+                    timeout=5,
+                )
+                if response.status_code == 200:
+                    model_info = response.json()
+                    general_architecture = model_info.get("model_info", {}).get(
+                        "general.architecture", "llama"
+                    )
+                    context_length = model_info.get("model_info", {}).get(
+                        f"{general_architecture}.context_length", 8192
+                    )
+                    if context_length > 32 * 1024:
+                        context_length = 32 * 1024
+                    self.extra_params = dict(num_ctx=context_length)
+                else:
+                    self.extra_params = dict(num_ctx=8 * 1024, num_predict=8192)
+
+            except requests.RequestException as e:
+                print(f"Error fetching model info: {e}")
                 self.extra_params = dict(num_ctx=8 * 1024)
+            return  # <--
+
+        if "deepseek-coder-v2" in model and (
+            model.startswith("ollama/") or model.startswith("ollama_chat/")
+        ):
+            response = requests.post(
+                f"{os.getenv('OLLAMA_API_BASE', 'http://localhost:11434')}/api/show",
+                json={"model": model.replace("ollama/", "")},
+                timeout=5,
+            )
+            if response.status_code == 200:
+                model_info = response.json()
+                general_architecture = model_info.get("model_info", {}).get(
+                    "general.architecture", "llama"
+                )
+                _reported_context_length = model_info.get("model_info", {}).get(
+                    f"{general_architecture}.context_length", 8192
+                )
+                print(
+                    f"Model reported context length: {_reported_context_length}. Using 24,576 as "
+                    "per https://github.com/ggerganov/llama.cpp/issues/8862#issuecomment-2282825980"
+                )
+
+            self.edit_format = "diff"
+            self.editor_edit_format = "editor-diff"
+            self.use_repo_map = True
+            # https://github.com/ggerganov/llama.cpp/issues/8862#issuecomment-2282825980
+            self.extra_params = dict(num_ctx=24576, num_predict=8192)
             return  # <--
 
         # use the defaults
@@ -1195,14 +1274,17 @@ def register_models(model_settings_fnames):
             for model_settings_dict in model_settings_list:
                 model_settings = ModelSettings(**model_settings_dict)
                 existing_model_settings = next(
-                    (ms for ms in MODEL_SETTINGS if ms.name == model_settings.name), None
+                    (ms for ms in MODEL_SETTINGS if ms.name == model_settings.name),
+                    None,
                 )
 
                 if existing_model_settings:
                     MODEL_SETTINGS.remove(existing_model_settings)
                 MODEL_SETTINGS.append(model_settings)
         except Exception as e:
-            raise Exception(f"Error loading model settings from {model_settings_fname}: {e}")
+            raise Exception(
+                f"Error loading model settings from {model_settings_fname}: {e}"
+            )
         files_loaded.append(model_settings_fname)
 
     return files_loaded
@@ -1280,7 +1362,9 @@ def sanity_check_model(io, model):
 
     elif not model.keys_in_environment:
         show = True
-        io.tool_warning(f"Warning for {model}: Unknown which environment variables are required.")
+        io.tool_warning(
+            f"Warning for {model}: Unknown which environment variables are required."
+        )
 
     if not model.info:
         show = True

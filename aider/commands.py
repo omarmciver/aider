@@ -93,7 +93,11 @@ class Commands:
             sorted(
                 (
                     coder.edit_format,
-                    coder.__doc__.strip().split("\n")[0] if coder.__doc__ else "No description",
+                    (
+                        coder.__doc__.strip().split("\n")[0]
+                        if coder.__doc__
+                        else "No description"
+                    ),
                 )
                 for coder in coders.__all__
                 if getattr(coder, "edit_format", None)
@@ -128,7 +132,9 @@ class Commands:
             self.io.tool_output("\nOr a valid edit format:\n")
             for format, description in valid_formats.items():
                 if format not in show_formats:
-                    self.io.tool_output(f"- {format:<{max_format_length}} : {description}")
+                    self.io.tool_output(
+                        f"- {format:<{max_format_length}} : {description}"
+                    )
 
             return
 
@@ -175,7 +181,9 @@ class Commands:
                 self.io.tool_warning("Unable to initialize playwright.")
 
             self.scraper = Scraper(
-                print_error=self.io.tool_error, playwright_available=res, verify_ssl=self.verify_ssl
+                print_error=self.io.tool_error,
+                playwright_available=res,
+                verify_ssl=self.verify_ssl,
             )
 
         content = self.scraper.scrape(url) or ""
@@ -374,12 +382,16 @@ class Commands:
 
         # system messages
         main_sys = self.coder.fmt_system_prompt(self.coder.gpt_prompts.main_system)
-        main_sys += "\n" + self.coder.fmt_system_prompt(self.coder.gpt_prompts.system_reminder)
+        main_sys += "\n" + self.coder.fmt_system_prompt(
+            self.coder.gpt_prompts.system_reminder
+        )
         msgs = [
             dict(role="system", content=main_sys),
             dict(
                 role="system",
-                content=self.coder.fmt_system_prompt(self.coder.gpt_prompts.system_reminder),
+                content=self.coder.fmt_system_prompt(
+                    self.coder.gpt_prompts.system_reminder
+                ),
             ),
         ]
 
@@ -395,7 +407,9 @@ class Commands:
         # repo map
         other_files = set(self.coder.get_all_abs_files()) - set(self.coder.abs_fnames)
         if self.coder.repo_map:
-            repo_content = self.coder.repo_map.get_repo_map(self.coder.abs_fnames, other_files)
+            repo_content = self.coder.repo_map.get_repo_map(
+                self.coder.abs_fnames, other_files
+            )
             if repo_content:
                 tokens = self.coder.main_model.token_count(repo_content)
                 res.append((tokens, "repository map", "use --map-tokens to resize"))
@@ -448,7 +462,9 @@ class Commands:
             self.io.tool_output(f"${cost:7.4f} {fmt(tk)} {msg} {tip}")  # noqa: E231
 
         self.io.tool_output("=" * (width + cost_width + 1))
-        self.io.tool_output(f"${total_cost:7.4f} {fmt(total)} tokens total")  # noqa: E231
+        self.io.tool_output(
+            f"${total_cost:7.4f} {fmt(total)} tokens total"
+        )  # noqa: E231
 
         limit = self.coder.main_model.info.get("max_input_tokens") or 0
         if not limit:
@@ -456,7 +472,9 @@ class Commands:
 
         remaining = limit - total
         if remaining > 1024:
-            self.io.tool_output(f"{cost_pad}{fmt(remaining)} tokens remaining in context window")
+            self.io.tool_output(
+                f"{cost_pad}{fmt(remaining)} tokens remaining in context window"
+            )
         elif remaining > 0:
             self.io.tool_error(
                 f"{cost_pad}{fmt(remaining)} tokens remaining in context window (use /drop or"
@@ -483,13 +501,19 @@ class Commands:
 
         last_commit = self.coder.repo.get_head_commit()
         if not last_commit or not last_commit.parents:
-            self.io.tool_error("This is the first commit in the repository. Cannot undo.")
+            self.io.tool_error(
+                "This is the first commit in the repository. Cannot undo."
+            )
             return
 
         last_commit_hash = self.coder.repo.get_head_commit_sha(short=True)
-        last_commit_message = self.coder.repo.get_head_commit_message("(unknown)").strip()
+        last_commit_message = self.coder.repo.get_head_commit_message(
+            "(unknown)"
+        ).strip()
         if last_commit_hash not in self.coder.aider_commit_hashes:
-            self.io.tool_error("The last commit was not made by aider in this chat session.")
+            self.io.tool_error(
+                "The last commit was not made by aider in this chat session."
+            )
             self.io.tool_output(
                 "You could try `/git reset --hard HEAD^` but be aware that this is a destructive"
                 " command!"
@@ -503,7 +527,9 @@ class Commands:
             return
 
         prev_commit = last_commit.parents[0]
-        changed_files_last_commit = [item.a_path for item in last_commit.diff(prev_commit)]
+        changed_files_last_commit = [
+            item.a_path for item in last_commit.diff(prev_commit)
+        ]
 
         for fname in changed_files_last_commit:
             if self.coder.repo.repo.is_dirty(path=fname):
@@ -565,7 +591,9 @@ class Commands:
 
         # Get the current HEAD after undo
         current_head_hash = self.coder.repo.get_head_commit_sha(short=True)
-        current_head_message = self.coder.repo.get_head_commit_message("(unknown)").strip()
+        current_head_message = self.coder.repo.get_head_commit_message(
+            "(unknown)"
+        ).strip()
         self.io.tool_output(f"Now at:  {current_head_hash} {current_head_message}")
 
         if self.coder.main_model.send_undo_reply:
@@ -585,7 +613,9 @@ class Commands:
 
         current_head = self.coder.repo.get_head_commit_sha()
         if current_head is None:
-            self.io.tool_error("Unable to get current commit. The repository might be empty.")
+            self.io.tool_error(
+                "Unable to get current commit. The repository might be empty."
+            )
             return
 
         if len(self.coder.commit_before_message) < 2:
@@ -726,7 +756,9 @@ class Commands:
                 fname = Path(self.coder.root) / word
 
             if self.coder.repo and self.coder.repo.ignored_file(fname):
-                self.io.tool_warning(f"Skipping {fname} due to aiderignore or --subtree-only.")
+                self.io.tool_warning(
+                    f"Skipping {fname} due to aiderignore or --subtree-only."
+                )
                 continue
 
             if fname.exists():
@@ -752,7 +784,9 @@ class Commands:
                 self.io.tool_output(f"You can add to git with: /git add {fname}")
                 continue
 
-            if self.io.confirm_ask(f"No files matched '{word}'. Do you want to create {fname}?"):
+            if self.io.confirm_ask(
+                f"No files matched '{word}'. Do you want to create {fname}?"
+            ):
                 try:
                     fname.touch()
                     all_matched_files.add(str(fname))
@@ -762,7 +796,9 @@ class Commands:
         for matched_file in sorted(all_matched_files):
             abs_file_path = self.coder.abs_root_path(matched_file)
 
-            if not abs_file_path.startswith(self.coder.root) and not is_image_file(matched_file):
+            if not abs_file_path.startswith(self.coder.root) and not is_image_file(
+                matched_file
+            ):
                 self.io.tool_error(
                     f"Can not add {abs_file_path}, which is not within {self.coder.root}"
                 )
@@ -773,7 +809,9 @@ class Commands:
                 continue
 
             if abs_file_path in self.coder.abs_fnames:
-                self.io.tool_error(f"{matched_file} is already in the chat as an editable file")
+                self.io.tool_error(
+                    f"{matched_file} is already in the chat as an editable file"
+                )
                 continue
             elif abs_file_path in self.coder.abs_read_only_fnames:
                 if self.coder.repo and self.coder.repo.path_in_repo(matched_file):
@@ -806,7 +844,9 @@ class Commands:
 
     def completions_drop(self):
         files = self.coder.get_inchat_relative_files()
-        read_only_files = [self.coder.get_rel_fname(fn) for fn in self.coder.abs_read_only_fnames]
+        read_only_files = [
+            self.coder.get_rel_fname(fn) for fn in self.coder.abs_read_only_fnames
+        ]
         all_files = files + read_only_files
         all_files = [self.quote_fname(fn) for fn in all_files]
         return all_files
@@ -841,7 +881,9 @@ class Commands:
 
             for matched_file in read_only_matched:
                 self.coder.abs_read_only_fnames.remove(matched_file)
-                self.io.tool_output(f"Removed read-only file {matched_file} from the chat")
+                self.io.tool_output(
+                    f"Removed read-only file {matched_file} from the chat"
+                )
 
             # For editable files, use glob if word contains glob chars, otherwise use substring
             if any(c in expanded_word for c in "*?[]"):
@@ -849,7 +891,9 @@ class Commands:
             else:
                 # Use substring matching like we do for read-only files
                 matched_files = [
-                    self.coder.get_rel_fname(f) for f in self.coder.abs_fnames if expanded_word in f
+                    self.coder.get_rel_fname(f)
+                    for f in self.coder.abs_fnames
+                    if expanded_word in f
                 ]
 
             if not matched_files:
@@ -910,7 +954,10 @@ class Commands:
     def cmd_run(self, args, add_on_nonzero_exit=False):
         "Run a shell command and optionally add the output to the chat (alias: !)"
         exit_status, combined_output = run_cmd(
-            args, verbose=self.verbose, error_print=self.io.tool_error, cwd=self.coder.root
+            args,
+            verbose=self.verbose,
+            error_print=self.io.tool_error,
+            cwd=self.coder.root,
         )
 
         if combined_output is None:
@@ -924,7 +971,9 @@ class Commands:
         if add:
             num_lines = len(combined_output.strip().splitlines())
             line_plural = "line" if num_lines == 1 else "lines"
-            self.io.tool_output(f"Added {num_lines} {line_plural} of output to the chat.")
+            self.io.tool_output(
+                f"Added {num_lines} {line_plural} of output to the chat."
+            )
 
             msg = prompts.run_output.format(
                 command=args,
@@ -1001,7 +1050,9 @@ class Commands:
             else:
                 self.io.tool_output(f"{cmd} No description available.")
         self.io.tool_output()
-        self.io.tool_output("Use `/help <question>` to ask questions about how to use aider.")
+        self.io.tool_output(
+            "Use `/help <question>` to ask questions about how to use aider."
+        )
 
     def cmd_help(self, args):
         "Ask questions about aider"
@@ -1068,7 +1119,9 @@ class Commands:
 
     def _generic_chat_command(self, args, edit_format):
         if not args.strip():
-            self.io.tool_error(f"Please provide a question or topic for the {edit_format} chat.")
+            self.io.tool_error(
+                f"Please provide a question or topic for the {edit_format} chat."
+            )
             return
 
         from aider.coders.base_coder import Coder
@@ -1119,7 +1172,8 @@ class Commands:
                 return
             try:
                 self.voice = voice.Voice(
-                    audio_format=self.args.voice_format, device_name=self.args.voice_input_device
+                    audio_format=self.args.voice_format,
+                    device_name=self.args.voice_input_device,
                 )
             except voice.SoundDeviceError:
                 self.io.tool_error(
@@ -1162,14 +1216,23 @@ class Commands:
 
                 # Check if a file with the same name already exists in the chat
                 existing_file = next(
-                    (f for f in self.coder.abs_fnames if Path(f).name == abs_file_path.name), None
+                    (
+                        f
+                        for f in self.coder.abs_fnames
+                        if Path(f).name == abs_file_path.name
+                    ),
+                    None,
                 )
                 if existing_file:
                     self.coder.abs_fnames.remove(existing_file)
-                    self.io.tool_output(f"Replaced existing image in the chat: {existing_file}")
+                    self.io.tool_output(
+                        f"Replaced existing image in the chat: {existing_file}"
+                    )
 
                 self.coder.abs_fnames.add(str(abs_file_path))
-                self.io.tool_output(f"Added clipboard image to the chat: {abs_file_path}")
+                self.io.tool_output(
+                    f"Added clipboard image to the chat: {abs_file_path}"
+                )
                 self.coder.check_added_files()
 
                 return
@@ -1226,7 +1289,9 @@ class Commands:
                 self.io.tool_error(f"Not a file or directory: {abs_path}")
 
     def _add_read_only_file(self, abs_path, original_name):
-        if is_image_file(original_name) and not self.coder.main_model.info.get("supports_vision"):
+        if is_image_file(original_name) and not self.coder.main_model.info.get(
+            "supports_vision"
+        ):
             self.io.tool_error(
                 f"Cannot add image file {original_name} as the"
                 f" {self.coder.main_model.name} does not support images."
@@ -1234,7 +1299,9 @@ class Commands:
             return
 
         if abs_path in self.coder.abs_read_only_fnames:
-            self.io.tool_error(f"{original_name} is already in the chat as a read-only file")
+            self.io.tool_error(
+                f"{original_name} is already in the chat as a read-only file"
+            )
             return
         elif abs_path in self.coder.abs_fnames:
             self.coder.abs_fnames.remove(abs_path)
@@ -1273,6 +1340,61 @@ class Commands:
         else:
             self.io.tool_output("No repository map available.")
 
+    def cmd_analyze_code(self, args):
+        "Generate summaries for files in the repository map"
+
+        switchOptions = args.strip().lower()
+
+        if not self.coder.repo_map:
+            self.io.tool_error("Repo map is not initialized.")
+            return
+
+        if switchOptions == "files":
+            self._analyze_code_files()
+        elif switchOptions == "files-force":
+            self._analyze_code_files(True)
+        elif switchOptions == "dir":
+            self._analyze_code_dir()
+        elif switchOptions == "dir-force":
+            self._analyze_code_dir(True)
+        elif switchOptions == "arch":
+            self._analyze_code_arch()
+        elif switchOptions == "arch-force":
+            self._analyze_code_arch(True)
+        else:
+            self.io.tool_error("Please provide a valid option: files, dir, or arch")
+
+    def _analyze_code_files(self, force=False):
+        if force:
+            self.coder.repo_map.reload_file_summaries()
+        all_files = self.coder.get_all_abs_files()
+        for fname in all_files:
+            summary = self.coder.repo_map.get_file_summary(fname)
+            if summary:
+                self.io.tool_output(f"Summary for {fname}: {summary}")
+            else:
+                self.io.tool_warning(f"No summary generated for {fname}.")
+
+    def _analyze_code_dir(self, force=False):
+        if force:
+            self.coder.repo_map.reload_folder_summaries()
+        directories = self.coder.get_directories()
+        for directory in directories:
+            summary = self.coder.repo_map.get_folder_summary(directory)
+            if summary:
+                self.io.tool_output(f"Summary for {directory}: {summary}")
+            else:
+                self.io.tool_warning(f"No summary generated for {directory}.")
+
+    def _analyze_code_arch(self, force=False):
+        if force:
+            self.coder.repo_map.reload_arch_summary()
+        summary = self.coder.repo_map.get_arch_summary()
+        if summary:
+            self.io.tool_output(f"Architecture Summary: {summary}")
+        else:
+            self.io.tool_warning("No architecture summary generated.")
+
     def cmd_map_refresh(self, args):
         "Force a refresh of the repository map"
         repo_map = self.coder.get_repo_map(force_refresh=True)
@@ -1296,7 +1418,9 @@ class Commands:
             return
 
         try:
-            with open(args.strip(), "r", encoding=self.io.encoding, errors="replace") as f:
+            with open(
+                args.strip(), "r", encoding=self.io.encoding, errors="replace"
+            ) as f:
                 commands = f.readlines()
         except FileNotFoundError:
             self.io.tool_error(f"File not found: {args}")
@@ -1385,7 +1509,9 @@ class Commands:
     def cmd_copy(self, args):
         "Copy the last assistant message to the clipboard"
         all_messages = self.coder.done_messages + self.coder.cur_messages
-        assistant_messages = [msg for msg in reversed(all_messages) if msg["role"] == "assistant"]
+        assistant_messages = [
+            msg for msg in reversed(all_messages) if msg["role"] == "assistant"
+        ]
 
         if not assistant_messages:
             self.io.tool_error("No assistant messages found to copy.")
@@ -1400,14 +1526,18 @@ class Commands:
                 if len(last_assistant_message) > 50
                 else last_assistant_message
             )
-            self.io.tool_output(f"Copied last assistant message to clipboard. Preview: {preview}")
+            self.io.tool_output(
+                f"Copied last assistant message to clipboard. Preview: {preview}"
+            )
         except pyperclip.PyperclipException as e:
             self.io.tool_error(f"Failed to copy to clipboard: {str(e)}")
             self.io.tool_output(
                 "You may need to install xclip or xsel on Linux, or pbcopy on macOS."
             )
         except Exception as e:
-            self.io.tool_error(f"An unexpected error occurred while copying to clipboard: {str(e)}")
+            self.io.tool_error(
+                f"An unexpected error occurred while copying to clipboard: {str(e)}"
+            )
 
     def cmd_report(self, args):
         "Report a problem by opening a GitHub Issue"

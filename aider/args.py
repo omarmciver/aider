@@ -304,14 +304,24 @@ def get_parser(default_config_files, git_root):
         default=2,
         help="Multiplier for map tokens when no files are specified (default: 2)",
     )
+    group.add_argument(
+        "--map-summaries",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Generate LLM summaries for files in the repo map (default: False)",
+    )
 
     ##########
     group = parser.add_argument_group("History Files")
     default_input_history_file = (
-        os.path.join(git_root, ".aider.input.history") if git_root else ".aider.input.history"
+        os.path.join(git_root, ".aider.input.history")
+        if git_root
+        else ".aider.input.history"
     )
     default_chat_history_file = (
-        os.path.join(git_root, ".aider.chat.history.md") if git_root else ".aider.chat.history.md"
+        os.path.join(git_root, ".aider.chat.history.md")
+        if git_root
+        else ".aider.chat.history.md"
     )
     group.add_argument(
         "--input-history-file",
