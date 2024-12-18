@@ -43,8 +43,12 @@ def check_config_files_for_yes(config_files):
                     for line in f:
                         if line.strip().startswith("yes:"):
                             print("Configuration error detected.")
-                            print(f"The file {config_file} contains a line starting with 'yes:'")
-                            print("Please replace 'yes:' with 'yes-always:' in this file.")
+                            print(
+                                f"The file {config_file} contains a line starting with 'yes:'"
+                            )
+                            print(
+                                "Please replace 'yes:' with 'yes-always:' in this file."
+                            )
                             found = True
             except Exception:
                 pass
@@ -106,7 +110,9 @@ def setup_git(git_root, io):
         except ANY_GIT_ERROR:
             pass
     elif cwd == Path.home():
-        io.tool_warning("You should probably run aider in a directory, not your home dir.")
+        io.tool_warning(
+            "You should probably run aider in a directory, not your home dir."
+        )
         return
     elif cwd and io.confirm_ask(
         "No git repo found, create one to track aider's changes (recommended)?"
@@ -138,7 +144,9 @@ def setup_git(git_root, io):
             io.tool_warning('Update git name with: git config user.name "Your Name"')
         if not user_email:
             git_config.set_value("user", "email", "you@example.com")
-            io.tool_warning('Update git email with: git config user.email "you@example.com"')
+            io.tool_warning(
+                'Update git email with: git config user.email "you@example.com"'
+            )
 
     return repo.working_tree_dir
 
@@ -177,7 +185,9 @@ def check_gitignore(git_root, io, ask=True):
     if not patterns_to_add:
         return
 
-    if ask and not io.confirm_ask(f"Add {', '.join(patterns_to_add)} to .gitignore (recommended)?"):
+    if ask and not io.confirm_ask(
+        f"Add {', '.join(patterns_to_add)} to .gitignore (recommended)?"
+    ):
         return
 
     if content and not content.endswith("\n"):
@@ -353,7 +363,9 @@ def register_litellm_models(git_root, model_metadata_fname, io, verbose=False):
     model_metatdata_files = []
 
     # Add the resource file path
-    resource_metadata = importlib_resources.files("aider.resources").joinpath("model-metadata.json")
+    resource_metadata = importlib_resources.files("aider.resources").joinpath(
+        "model-metadata.json"
+    )
     model_metatdata_files.append(str(resource_metadata))
 
     model_metatdata_files += generate_search_path_list(
@@ -361,7 +373,9 @@ def register_litellm_models(git_root, model_metadata_fname, io, verbose=False):
     )
 
     try:
-        model_metadata_files_loaded = models.register_litellm_models(model_metatdata_files)
+        model_metadata_files_loaded = models.register_litellm_models(
+            model_metatdata_files
+        )
         if len(model_metadata_files_loaded) > 0 and verbose:
             io.tool_output("Loaded model metadata from:")
             for model_metadata_file in model_metadata_files_loaded:
@@ -394,7 +408,9 @@ def sanity_check_repo(repo, io):
 
     if bad_ver:
         io.tool_error("Aider only works with git repos with version number 1 or 2.")
-        io.tool_output("You may be able to convert your repo: git update-index --index-version=2")
+        io.tool_output(
+            "You may be able to convert your repo: git update-index --index-version=2"
+        )
         io.tool_output("Or run aider --no-git to proceed without using git.")
         io.offer_url(urls.git_index_version, "Open documentation url for more info?")
         return False
@@ -434,7 +450,10 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
     try:
         args, unknown = parser.parse_known_args(argv)
     except AttributeError as e:
-        if all(word in str(e) for word in ["bool", "object", "has", "no", "attribute", "strip"]):
+        if all(
+            word in str(e)
+            for word in ["bool", "object", "has", "no", "attribute", "strip"]
+        ):
             if check_config_files_for_yes(default_config_files):
                 return 1
         raise e
@@ -563,7 +582,9 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
         )
         os.environ["OPENAI_API_VERSION"] = args.openai_api_version
     if args.openai_api_type:
-        io.tool_warning("--openai-api-type is deprecated, use --set-env OPENAI_API_TYPE=<value>")
+        io.tool_warning(
+            "--openai-api-type is deprecated, use --set-env OPENAI_API_TYPE=<value>"
+        )
         os.environ["OPENAI_API_TYPE"] = args.openai_api_type
     if args.openai_organization_id:
         io.tool_warning(
@@ -571,7 +592,9 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
         )
         os.environ["OPENAI_ORGANIZATION"] = args.openai_organization_id
 
-    analytics = Analytics(logfile=args.analytics_log, permanently_disable=args.analytics_disable)
+    analytics = Analytics(
+        logfile=args.analytics_log, permanently_disable=args.analytics_disable
+    )
     if args.analytics is not False:
         if analytics.need_to_ask(args.analytics):
             io.tool_output(
@@ -692,7 +715,9 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
     check_and_load_imports(io, is_first_run, verbose=args.verbose)
 
     register_models(git_root, args.model_settings_file, io, verbose=args.verbose)
-    register_litellm_models(git_root, args.model_metadata_file, io, verbose=args.verbose)
+    register_litellm_models(
+        git_root, args.model_metadata_file, io, verbose=args.verbose
+    )
 
     # Process any command line aliases
     if args.alias:
@@ -745,10 +770,14 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
             io.tool_output("You can skip this check with --no-show-model-warnings")
 
             try:
-                io.offer_url(urls.model_warnings, "Open documentation url for more info?")
+                io.offer_url(
+                    urls.model_warnings, "Open documentation url for more info?"
+                )
                 io.tool_output()
             except KeyboardInterrupt:
-                analytics.event("exit", reason="Keyboard interrupt during model warnings")
+                analytics.event(
+                    "exit", reason="Keyboard interrupt during model warnings"
+                )
                 return 1
 
     repo = None
@@ -977,7 +1006,9 @@ def main(argv=None, input=None, output=None, force_git_root=None, return_coder=F
         analytics.event("exit", reason="Exit flag set")
         return
 
-    analytics.event("cli session", main_model=main_model, edit_format=main_model.edit_format)
+    analytics.event(
+        "cli session", main_model=main_model, edit_format=main_model.edit_format
+    )
 
     while True:
         try:
@@ -1050,8 +1081,12 @@ def check_and_load_imports(io, is_first_run, verbose=False):
                 load_slow_imports(swallow=False)
             except Exception as err:
                 io.tool_error(str(err))
-                io.tool_output("Error loading required imports. Did you install aider properly?")
-                io.offer_url(urls.install_properly, "Open documentation url for more info?")
+                io.tool_output(
+                    "Error loading required imports. Did you install aider properly?"
+                )
+                io.offer_url(
+                    urls.install_properly, "Open documentation url for more info?"
+                )
                 sys.exit(1)
 
             if verbose:
