@@ -1,6 +1,5 @@
 import colorsys
 import hashlib
-import json
 import math
 import mimetypes
 import os
@@ -23,180 +22,13 @@ from tqdm import tqdm
 from aider.dump import dump
 from aider.special import filter_important_files
 from aider.utils import Spinner
+from aider.file_summary_store import FileSummaryStore
 
 # tree_sitter is throwing a FutureWarning
 warnings.simplefilter("ignore", category=FutureWarning)
 from tree_sitter_languages import get_language, get_parser  # noqa: E402
 
 Tag = namedtuple("Tag", "rel_fname fname line name kind".split())
-
-
-class FileSummaryStore:
-    """Stores file summaries persistently with deduplication"""
-
-    def __init__(self, root):
-        self.root = root
-        self.file = Path(root) / ".aider.file_summaries"
-        self.folder_file = Path(root) / ".aider.folder_summaries"
-        self.architecture_file = Path(root) / ".aider.architecture_summary"
-
-        self.summaries = self._load_summaries()
-        self.folder_summaries, self.folder_hashes = self._load_folder_summaries()
-        self.architecture_summary = self._load_architecture_summary()
-
-        self._clean_duplicates()
-
-    def _load_folder_summaries(self):
-        """Load folder summaries from file"""
-        if not self.folder_file.exists():
-            return {}, {}
-        try:
-            with open(self.folder_file) as f:
-                data = json.load(f)
-                return data.get("summaries", {}), data.get("hashes", {})
-        except Exception as e:
-            if self.verbose:
-                print(f"Error loading folder summaries: {e}")
-            return {}
-
-    def _load_architecture_summary(self):
-        """Load architecture summary from file"""
-        if not self.architecture_file.exists():
-            return None
-        try:
-            with open(self.architecture_file) as f:
-                return f.read()
-        except Exception as e:
-            if self.verbose:
-                print(f"Error loading architecture summary: {e}")
-            return None
-
-    def _save_folder_summaries(self):
-        """Save folder summaries to file with error handling"""
-        try:
-            self.folder_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.folder_file, "w") as f:
-                json.dump(
-                    {"summaries": self.folder_summaries, "hashes": self.folder_hashes},
-                    f,
-                    indent=2,
-                    sort_keys=True,
-                )
-        except Exception as e:
-            if self.verbose:
-                print(f"Error saving folder summaries: {e}")
-
-    def _save_architecture_summary(self):
-        """Save architecture summary to file with error handling"""
-        try:
-            self.architecture_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.architecture_file, "w") as f:
-                f.write(self.architecture_summary)
-        except Exception as e:
-            if self.verbose:
-                print(f"Error saving architecture summary: {e}")
-
-    def get_folder_summary(self, folder_path):
-        """Get summary for folder if exists"""
-        return self.folder_summaries.get(folder_path)
-
-    def save_folder_summary(self, folder_path, summary):
-        """Save summary for folder"""
-        # Calculate combined hash of file hashes in the folder
-        file_hashes = [
-            self.summaries[rel_fname]["hash"]
-            for rel_fname in self.summaries
-            if rel_fname.startswith(folder_path)
-        ]
-        combined_hash = hashlib.sha256("".join(file_hashes).encode()).hexdigest()
-
-        # Calculate combined hash of file hashes in the folder
-        file_hashes = [
-            self.summaries[rel_fname]["hash"]
-            for rel_fname in self.summaries
-            if rel_fname.startswith(folder_path)
-        ]
-        combined_hash = hashlib.sha256("".join(file_hashes).encode()).hexdigest()
-
-        self.folder_summaries[folder_path] = summary
-        self.folder_hashes[folder_path] = combined_hash
-        self._save_folder_summaries()
-        self.folder_hashes[folder_path] = combined_hash
-        self._save_folder_summaries()
-
-    def get_architecture_summary(self):
-        """Get architecture summary if exists"""
-        return self.architecture_summary
-
-    def save_architecture_summary(self, summary):
-        """Save architecture summary"""
-        self.architecture_summary = summary
-        self._save_architecture_summary()
-
-    def _load_summaries(self):
-        """Load summaries from file"""
-        if not self.file.exists():
-            return {}
-        try:
-            with open(self.file) as f:
-                return json.load(f)
-        except Exception as e:
-            if self.verbose:
-                print(f"Error loading file summaries: {e}")
-            return {}
-
-    def _clean_duplicates(self):
-        """Remove any duplicate entries by keeping most recent for each file"""
-        cleaned = {}
-        for rel_fname, entries in self.summaries.items():
-            if isinstance(entries, dict):
-                # Single entry format
-                cleaned[rel_fname] = entries
-            elif isinstance(entries, list):
-                # Keep only the last entry in the list
-                if entries:
-                    cleaned[rel_fname] = entries[-1]
-
-        if cleaned != self.summaries:
-            self.summaries = cleaned
-            self._save_summaries()
-
-    def _save_summaries(self):
-        """Save summaries to file with error handling"""
-        try:
-            # Create parent directories if they don't exist
-            self.file.parent.mkdir(parents=True, exist_ok=True)
-
-            # Write to temporary file first
-            temp_file = self.file.with_suffix(".tmp")
-            with open(temp_file, "w") as f:
-                json.dump(self.summaries, f, indent=2, sort_keys=True)
-
-            # Rename temporary file to actual file
-            temp_file.replace(self.file)
-        except Exception as e:
-            if self.verbose:
-                print(f"Error saving file summaries: {e}")
-
-    def get_summary(self, rel_fname, content_hash):
-        """Get summary for file if content matches"""
-        if rel_fname not in self.summaries:
-            return None
-        entry = self.summaries[rel_fname]
-        if entry["hash"] != content_hash:
-            return None
-        return entry["summary"]
-
-    def save_summary(self, rel_fname, content_hash, summary):
-        """Save summary for file with timestamp"""
-        # Skip saving summaries for hidden files
-        if os.path.basename(rel_fname).startswith("."):
-            return
-
-        self.summaries[rel_fname] = {"hash": content_hash, "summary": summary}
-        self._save_summaries()
-
-
 SQLITE_ERRORS = (sqlite3.OperationalError, sqlite3.DatabaseError, OSError)
 
 
@@ -217,15 +49,18 @@ class RepoMap:
         max_context_window=None,
         map_mul_no_files=8,
         refresh="auto",
+        coder=None,
     ):
         self.io = io
         self.verbose = verbose
         self.refresh = refresh
-        self.file_summaries = None
+        self.coder = coder
 
         if not root:
             root = os.getcwd()
         self.root = root
+
+        self.file_summary_store = FileSummaryStore(self.root)
 
         self.load_tags_cache()
         self.cache_threshold = 0.95
@@ -394,15 +229,13 @@ class RepoMap:
             self.io.tool_warning(f"File not found error: {fname}")
 
     def reload_file_summaries(self):
-        self.file_summaries = None
+        self.file_summary_store.reset_file_summaries()
 
     def reload_folder_summaries(self):
-        """Reload folder summaries from file"""
-        self.folder_summaries = self._load_folder_summaries()
+        self.file_summary_store.reset_folder_summaries()
 
     def reload_arch_summary(self):
-        """Reload architecture summary from file"""
-        self.architecture_summary = self._load_architecture_summary()
+        self.file_summary_store.reset_architecture_summary()
 
     def get_tags(self, fname, rel_fname):
         # Check if the file is in the cache and if the modification time has not changed
@@ -835,6 +668,233 @@ class RepoMap:
 
     tree_cache = dict()
 
+    def get_file_summary(self, fname):
+        if self.file_summary_store:
+            summary = self.file_summary_store.get_file_summary(fname, None)
+            if summary:
+                return summary
+
+        """Generate a summary of the file's contents using the LLM"""
+        if not self.main_model.weak_model:
+            return None
+
+        rel_fname = self.get_rel_fname(fname)
+
+        if rel_fname is None or rel_fname == "":
+            print("rel_fname is None or empty")
+            return None
+        # Skip hidden files (starting with '.') or if any parent folder starts with '.'
+        if any(part.startswith(".") for part in Path(rel_fname).parts):
+            return None
+
+        mime_type, _ = mimetypes.guess_type(fname)
+        if not mime_type:
+            if fname.endswith((".tsx", ".jsx")):
+                mime_type = "application/javascript"
+            else:
+                return None
+
+        if (
+            not mime_type.startswith("text/")
+            and not mime_type.endswith("+xml")
+            and mime_type
+            not in [
+                "application/json",
+                "application/javascript",
+                "application/ecmascript",
+                "application/x-sh",
+                "application/xml",
+                "application/x-c",
+                "application/x-c++",
+                "application/x-java",
+                "application/x-python",
+                "application/x-ruby",
+                "application/x-php",
+                "application/x-perl",
+                "application/x-shellscript",
+            ]
+        ):
+            return None
+
+        if fname.endswith(".md"):
+            return None
+
+        content = self.io.read_text(fname)
+
+        if not isinstance(content, str):
+            return None
+
+        if not content:
+            return None
+
+        # Calculate content hash
+        content_hash = hashlib.sha256(content.encode()).hexdigest()
+
+        # Try to load from persistent store
+        cached = self.file_summary_store.get_file_summary(rel_fname, content_hash)
+        if cached:
+            return cached
+
+        # Split content into chunks of 2048 characters
+        chunk_size = 2048
+        content_chunks = [
+            content[i : i + chunk_size] for i in range(0, len(content), chunk_size)
+        ]
+
+        messages = [
+            dict(
+                role="user",
+                content=(
+                    "Analyze this file and create a searchable index entry:\n"
+                    f"File: {rel_fname}\n"
+                    "---\n"
+                    "1. Core purpose (15 words max)\n"
+                    "2. Key functions/classes (bullet list, function names with "
+                    "5-word description)\n"
+                    "3. Critical dependencies\n"
+                    "4. Data structures and types\n"
+                    "5. Integration points with other modules\n"
+                    "Skip tests, comments, and boilerplate. Focus on unique functionality."
+                    f"\n\n{content_chunks[0]}\n"
+                    + "\nDo not ask me any further questions."
+                ),
+            ),
+            dict(role="assistant", content="Ok."),
+        ]
+
+        try:
+
+            for _ in self.coder.send(messages, self.main_model.weak_model):
+                pass
+            summary = self.coder.partial_response_content.strip()
+
+            if len(summary) > 150:
+                messages.append(
+                    dict(
+                        role="user",
+                        content=(
+                            "The summary is too long. Please try again with a shorter "
+                            "description less than 100 chars."
+                        ),
+                    )
+                )
+
+            # Save to persistent store
+            self.file_summary_store.save_file_summary(rel_fname, content_hash, summary)
+
+            return summary
+        except Exception as e:
+            if self.verbose:
+                self.io.tool_warning(f"Error generating summary for {fname}: {str(e)}")
+            return None
+
+    def get_folder_summary(self, folderpath):
+        if self.file_summary_store:
+            summary = self.file_summary_store.get_folder_summary(folderpath)
+            if summary:
+                return summary
+
+        folder_summaries = []
+        for fname in os.listdir(folderpath):
+            full_path = os.path.join(folderpath, fname)
+            if os.path.isfile(full_path):
+                summary = self.get_file_summary(full_path)
+                if summary:
+                    folder_summaries.append(summary)
+
+        if not folder_summaries:
+            return None
+
+        folder_summary_prompt = (
+            f"Given these file summaries from directory {os.path.basename(folderpath)}, create a"
+            " module index:\n"
+            "1. Module purpose\n"
+            "2. Component hierarchy (max 3 levels)\n"
+            "3. Data flow patterns\n"
+            "4. Key interfaces and APIs\n"
+            "5. Cross-module dependencies\n"
+            "Preserve all function/class names but compress descriptions.\n\n"
+            + "\n".join(folder_summaries)
+            + "\nDo not ask me any further questions."
+        )
+
+        messages = [
+            dict(role="user", content=folder_summary_prompt),
+            dict(role="assistant", content="Ok."),
+        ]
+
+        try:
+            for _ in self.coder.send(messages, self.main_model.weak_model):
+                pass
+            folder_summary = self.coder.partial_response_content.strip()
+
+            # Save to persistent store
+            self.file_summary_store.save_folder_summary(folderpath, folder_summary)
+
+            return folder_summary
+        except Exception as e:
+            if self.verbose:
+                self.io.tool_warning(
+                    f"Error generating folder summary for {folderpath}: {str(e)}"
+                )
+            print(e)
+            return None
+
+    def get_arch_summary(self):
+
+        if self.file_summary_store:
+            summary = self.file_summary_store.get_architecture_summary()
+            if summary:
+                return summary
+
+        folder_summaries = []
+        for (
+            folder_path,
+            folder_data,
+        ) in self.file_summary_store.get_all_folder_summaries().items():
+            summary = folder_data["summary"]
+            folder_summaries.append(f"Folder: {folder_path}\n{summary}")
+
+        if not folder_summaries:
+            return None
+
+        arch_summary_prompt = (
+            "Create a compressed but queryable codebase representation:\n"
+            "1. System architecture (max 200 words)\n"
+            "2. Component map (filepath -> core functions)\n"
+            "3. Critical data flows\n"
+            "4. External interface points\n"
+            "5. Technology stack details\n"
+            "Format as a hierarchical structure. Preserve ALL:\n"
+            "- File paths\n"
+            "- Function/class names\n"
+            "- API endpoints\n"
+            "- Database schemas\n"
+            "- Message patterns\n\n"
+            + "\n".join(folder_summaries)
+            + "\nDo not ask me any further questions."
+        )
+
+        messages = [
+            dict(role="user", content=arch_summary_prompt),
+            dict(role="assistant", content="Ok."),
+        ]
+
+        try:
+            for _ in self.coder.send(messages, self.main_model.weak_model):
+                pass
+            arch_summary = self.coder.partial_response_content.strip()
+
+            # Save to persistent store
+            self.file_summary_store.save_architecture_summary(arch_summary)
+
+            return arch_summary
+        except Exception as e:
+            if self.verbose:
+                self.io.tool_warning(f"Error generating architecture summary: {str(e)}")
+            print(e)
+            return None
+
     def render_tree(self, abs_fname, rel_fname, lois):
         mtime = self.get_mtime(abs_fname)
         key = (rel_fname, tuple(sorted(lois)), mtime)
@@ -962,207 +1022,6 @@ def get_supported_languages_md():
     res += "\n"
 
     return res
-
-
-def get_file_summary(self, fname):
-    """Generate a summary of the file's contents using the LLM"""
-    if not self.main_model.weak_model:
-        return None
-
-    rel_fname = self.get_rel_fname(fname)
-    # Skip hidden files (starting with '.')
-    if os.path.basename(rel_fname).startswith("."):
-        return None
-
-    mime_type, _ = mimetypes.guess_type(fname)
-    if not mime_type:
-        return None
-
-    if mime_type.startswith("image/") or "stream" in mime_type:
-        return None
-
-    if fname.endswith(".md"):
-        return None
-
-    content = self.io.read_text(fname)
-
-    if not isinstance(content, str):
-        return None
-
-    if not content:
-        return None
-
-    # Calculate content hash
-    content_hash = hashlib.sha256(content.encode()).hexdigest()
-
-    # Initialize FileSummaryStore if needed
-    if self.repo_map.file_summaries is None:
-        self.repo_map.file_summaries = FileSummaryStore(self.root)
-
-    # Try to load from persistent store
-    cached = self.repo_map.file_summaries.get_summary(rel_fname, content_hash)
-    if cached:
-        return cached
-
-    # Split content into chunks of 2048 characters
-    chunk_size = 2048
-    content_chunks = [
-        content[i : i + chunk_size] for i in range(0, len(content), chunk_size)
-    ]
-
-    messages = [
-        dict(
-            role="user",
-            content=(
-                "Analyze this file and create a searchable index entry:\n"
-                f"File: {rel_fname}\n"
-                "---\n"
-                "1. Core purpose (15 words max)\n"
-                "2. Key functions/classes (bullet list, function names with "
-                "5-word description)\n"
-                "3. Critical dependencies\n"
-                "4. Data structures and types\n"
-                "5. Integration points with other modules\n"
-                "Skip tests, comments, and boilerplate. Focus on unique functionality."
-                f"\n\n{content_chunks[0]}\n"
-            ),
-        ),
-        dict(role="assistant", content="Ok."),
-    ]
-
-    original_stream_setting = self.stream
-    self.stream = False
-
-    try:
-
-        for _ in self.send(messages, self.main_model.weak_model):
-            pass
-        summary = self.partial_response_content.strip()
-
-        if len(summary) > 150:
-            messages.append(
-                dict(
-                    role="user",
-                    content=(
-                        "The summary is too long. Please try again with a shorter "
-                        "description less than 100 chars."
-                    ),
-                )
-            )
-
-        # Save to persistent store
-        self.repo_map.file_summaries.save_summary(rel_fname, content_hash, summary)
-
-        return summary
-    except Exception as e:
-        if self.verbose:
-            self.io.tool_warning(f"Error generating summary for {fname}: {str(e)}")
-        return None
-    finally:
-        self.stream = original_stream_setting
-
-
-def get_folder_summary(self, folderpath):
-    folder_summaries = []
-    for fname in os.listdir(folderpath):
-        full_path = os.path.join(folderpath, fname)
-        if os.path.isfile(full_path):
-            summary = self.get_file_summary(full_path)
-            if summary:
-                folder_summaries.append(summary)
-
-    if not folder_summaries:
-        return None
-
-    folder_summary_prompt = (
-        f"Given these file summaries from directory {os.path.basename(folderpath)}, create a"
-        " module index:\n"
-        "1. Module purpose\n"
-        "2. Component hierarchy (max 3 levels)\n"
-        "3. Data flow patterns\n"
-        "4. Key interfaces and APIs\n"
-        "5. Cross-module dependencies\n"
-        "Preserve all function/class names but compress descriptions.\n\n"
-        + "\n".join(folder_summaries)
-    )
-
-    messages = [
-        dict(role="user", content=folder_summary_prompt),
-        dict(role="assistant", content="Ok."),
-    ]
-
-    original_stream_setting = self.stream
-    self.stream = False
-
-    try:
-        for _ in self.send(messages, self.main_model.weak_model):
-            pass
-        folder_summary = self.partial_response_content.strip()
-
-        # Save to persistent store
-        self.repo_map.file_summaries.save_folder_summary(folderpath, folder_summary)
-
-        return folder_summary
-    except Exception as e:
-        if self.verbose:
-            self.io.tool_warning(
-                f"Error generating folder summary for {folderpath}: {str(e)}"
-            )
-        return None
-    finally:
-        self.stream = original_stream_setting
-
-
-def get_arch_summary(self):
-
-    folder_summaries = []
-    for (
-        folder_path,
-        summary,
-    ) in self.repo_map.file_summaries.folder_summaries.items():
-        folder_summaries.append(f"Folder: {folder_path}\n{summary}")
-
-    if not folder_summaries:
-        return None
-
-    arch_summary_prompt = (
-        "Create a compressed but queryable codebase representation:\n"
-        "1. System architecture (max 200 words)\n"
-        "2. Component map (filepath -> core functions)\n"
-        "3. Critical data flows\n"
-        "4. External interface points\n"
-        "5. Technology stack details\n"
-        "Format as a hierarchical structure. Preserve ALL:\n"
-        "- File paths\n"
-        "- Function/class names\n"
-        "- API endpoints\n"
-        "- Database schemas\n"
-        "- Message patterns\n\n" + "\n".join(folder_summaries)
-    )
-
-    messages = [
-        dict(role="user", content=arch_summary_prompt),
-        dict(role="assistant", content="Ok."),
-    ]
-
-    original_stream_setting = self.stream
-    self.stream = False
-
-    try:
-        for _ in self.send(messages, self.main_model.weak_model):
-            pass
-        arch_summary = self.partial_response_content.strip()
-
-        # Save to persistent store
-        self.repo_map.file_summaries.save_architecture_summary(arch_summary)
-
-        return arch_summary
-    except Exception as e:
-        if self.verbose:
-            self.io.tool_warning(f"Error generating architecture summary: {str(e)}")
-        return None
-    finally:
-        self.stream = original_stream_setting
 
 
 if __name__ == "__main__":
