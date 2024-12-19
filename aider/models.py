@@ -1045,7 +1045,7 @@ class Model(ModelSettings):
                     self.extra_params = dict(num_ctx=8 * 1024)
             return  # <--
 
-        if "mistral-nemo" in model and (
+        if ("mistral-nemo" in model or "llama3.2" in model) and (
             model.startswith("ollama/") or model.startswith("ollama_chat/")
         ):
             self.edit_format = "diff"

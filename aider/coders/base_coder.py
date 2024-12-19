@@ -456,6 +456,7 @@ class Coder:
                 max_inp_tokens,
                 map_mul_no_files=map_mul_no_files,
                 refresh=map_refresh,
+                coder=self,
             )
 
         self.summarizer = summarizer or ChatSummary(

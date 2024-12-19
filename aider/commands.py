@@ -1365,35 +1365,51 @@ class Commands:
             self.io.tool_error("Please provide a valid option: files, dir, or arch")
 
     def _analyze_code_files(self, force=False):
-        if force:
-            self.coder.repo_map.reload_file_summaries()
-        all_files = self.coder.get_all_abs_files()
-        for fname in all_files:
-            summary = self.coder.repo_map.get_file_summary(fname)
-            if summary:
-                self.io.tool_output(f"Summary for {fname}: {summary}")
-            else:
-                self.io.tool_warning(f"No summary generated for {fname}.")
+        original_stream_setting = self.coder.stream
+        try:
+            self.coder.stream = False
+
+            if force:
+                self.coder.repo_map.reload_file_summaries()
+            all_files = self.coder.get_all_abs_files()
+            for fname in all_files:
+                summary = self.coder.repo_map.get_file_summary(fname)
+                if summary:
+                    self.io.tool_output(f"Summary for {fname}: {summary}")
+                else:
+                    self.io.tool_warning(f"No summary generated for {fname}.")
+        finally:
+            self.coder.stream = original_stream_setting
 
     def _analyze_code_dir(self, force=False):
-        if force:
-            self.coder.repo_map.reload_folder_summaries()
-        directories = self.coder.get_directories()
-        for directory in directories:
-            summary = self.coder.repo_map.get_folder_summary(directory)
-            if summary:
-                self.io.tool_output(f"Summary for {directory}: {summary}")
-            else:
-                self.io.tool_warning(f"No summary generated for {directory}.")
+        original_stream_setting = self.coder.stream
+        try:
+            self.coder.stream = False
+            if force:
+                self.coder.repo_map.reload_folder_summaries()
+            directories = self.coder.get_directories()
+            for directory in directories:
+                summary = self.coder.repo_map.get_folder_summary(directory)
+                if summary:
+                    self.io.tool_output(f"Summary for {directory}: {summary}")
+                else:
+                    self.io.tool_warning(f"No summary generated for {directory}.")
+        finally:
+            self.coder.stream = original_stream_setting
 
     def _analyze_code_arch(self, force=False):
-        if force:
-            self.coder.repo_map.reload_arch_summary()
-        summary = self.coder.repo_map.get_arch_summary()
-        if summary:
-            self.io.tool_output(f"Architecture Summary: {summary}")
-        else:
-            self.io.tool_warning("No architecture summary generated.")
+        original_stream_setting = self.coder.stream
+        try:
+            self.coder.stream = False
+            if force:
+                self.coder.repo_map.reload_arch_summary()
+            summary = self.coder.repo_map.get_arch_summary()
+            if summary:
+                self.io.tool_output(f"Architecture Summary: {summary}")
+            else:
+                self.io.tool_warning("No architecture summary generated.")
+        finally:
+            self.coder.stream = original_stream_setting
 
     def cmd_map_refresh(self, args):
         "Force a refresh of the repository map"
