@@ -872,7 +872,7 @@ class RepoMap:
             "- Database schemas\n"
             "- Message patterns\n\n"
             + "\n".join(folder_summaries)
-            + "\nDo not ask me any further questions."
+            + "\nProvide this as a single hierarchical markdown document with minimal formatting."
         )
 
         messages = [
